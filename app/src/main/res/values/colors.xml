@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#008577</color>
+    <color name="colorPrimaryDark">#00574B</color>
+    <color name="colorAccent">#D81B60</color>
+    <color name="colorWifiConnected">#6495ED</color>
+    <color name="bg_color_org">#FF8000</color>
+
+    <color name="line_normal_bg">#1A000000</color>
+    <color name="color_deep_blue">#057dff</color>
+    <color name="color_deep_red">#f44336</color>
+    <color name="font_color_white">#FFFFFF</color>
+</resources>
