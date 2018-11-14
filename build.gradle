@@ -41,9 +41,7 @@ def supportVersion = "25.3.1"
 ext.deps = [
         supportAppCompat: "com.android.support:appcompat-v7:$supportVersion",
         supportDesign   : "com.android.support:design:$supportVersion",
-
         recycler        : 'com.android.support:recyclerview-v7:' + supportVersion,
-
 //        butterknife        : "com.jakewharton:butterknife:8.4.0",
 //        butterknifeCompiler: "com.jakewharton:butterknife-compiler:8.4.0",
 

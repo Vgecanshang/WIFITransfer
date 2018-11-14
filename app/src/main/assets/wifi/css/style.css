@@ -11,6 +11,8 @@ body {  background-image: url('../images/bg1_01.jpg'); padding: 0px;margin: 0px;
 .file_upload { cursor: pointer; position: absolute; top:0px; left:-250px; width:500px; height:500px;font-size: 500px; opacity: 0; -moz-opacity: 0; filter:alpha(opacity=0); }
 #copyright { margin-top: 170px; font-size: 14px; color: #FFF; width:243px; text-align: center; }
 #right_wrapper { background-image: url('../images/bg_files2.jpg'); background-repeat: repeat-y; width:559px; height:5000px;position: absolute;top: 0px; left:350px }
+#screenshot {width:fit-content; height:auto ;position: absolute; top:20px; left:900px}
+#screenshot_title {float:top ;font-size:19px; line-height:20px;margin-left:30px ; display: inline-block;}
 #right { background-image: url('../images/bg_files.jpg'); background-repeat: no-repeat; height:100%; width:100%; }
 #right .content_title { margin-left:37px;width:483px; height:40px; background-color: #96abbe; background-image: url('../images/bg_title.jpg'); line-height:40px;text-indent: 10px; font-size:14px; color:#FFFFFF;border-bottom: 1px solid #87a2b8; }
 #right .content_title .drag_hint { padding-left:10px; font-size:12px; color:#FFCC00 }
@@ -47,3 +49,13 @@ body {  background-image: url('../images/bg1_01.jpg'); padding: 0px;margin: 0px;
 .button_lables .button_lable1 {font-size:18px; line-height:18px; color:#ffffff; text-align:center; -moz-user-select: none;-khtml-user-select: none; user-select: none;}
 .button_lables .button_lable2 {font-size:12px; line-height:16px; color:#ffffff; text-align:center; -moz-user-select: none;-khtml-user-select: none; user-select: none;}
 .button_lable { position: absolute; width:210px; height:90px; font-size:20px; line-height:80px; color:#ffffff; text-align:center;}
+.screenshot { height:30px; width:auto ; color:#FFFFFF}
+.screenshot_img {
+    width:400px ;
+    height:800px ;
+    float:right ;
+    align:bottom ;
+    border:solid 30px white;
+    border-radius: 30px;
+    margin-right: 250px;
+}

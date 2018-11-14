@@ -22,6 +22,7 @@ import com.hwangjr.rxbus.RxBus;
 import com.hwangjr.rxbus.annotation.Subscribe;
 import com.hwangjr.rxbus.annotation.Tag;
 import cy.com.wifitransfer.R;
+import cy.com.wifitransfer.WebService;
 import cy.com.wifitransfer.base.Constants;
 import cy.com.wifitransfer.util.WifiConnectChangedReceiver;
 import cy.com.wifitransfer.util.WifiUtils;
@@ -34,10 +35,14 @@ public class PopupMenuDialog {
     Unbinder mUnbinder;
     @BindView(R.id.popup_menu_title)
     TextView mTxtTitle;
+    @BindView(R.id.shared_file_hint)
+    TextView mTxtFileHint;
     @BindView(R.id.popup_menu_subtitle)
     TextView mTxtSubTitle;
     @BindView(R.id.shared_wifi_state)
     ImageView mImgLanState;
+    @BindView(R.id.shared_file_state)
+    ImageView mImgFileState;
     @BindView(R.id.shared_wifi_state_hint)
     TextView mTxtStateHint;
     @BindView(R.id.shared_wifi_address)
@@ -94,6 +99,8 @@ public class PopupMenuDialog {
         checkWifiState(WifiUtils.getWifiConnectState(context));
         dialog.show();
         registerWifiConnectChangedReceiver();
+        mImgFileState.setImageResource(WebService.isStarted() ? R.drawable.icon_file_share_s : R.drawable.icon_file_share_n);
+        mTxtFileHint.setText(WebService.isStarted() ? R.string.str_file_share_started : R.string.str_file_share_unopened);
     }
 
     @OnClick({R.id.shared_wifi_cancel, R.id.shared_wifi_settings})
@@ -165,11 +172,19 @@ public class PopupMenuDialog {
         mTxtTitle.setTextColor(context.getResources().getColor(R.color.colorWifiConnected));
         mTxtSubTitle.setVisibility(View.GONE);
         mImgLanState.setImageResource(R.drawable.shared_wifi_enable);
-        mTxtStateHint.setText(R.string.pls_input_the_following_address_in_pc_browser);
-        mTxtAddress.setVisibility(View.VISIBLE);
-        mTxtAddress.setText(String.format(context.getString(R.string.http_address), ipAddr, Constants.HTTP_PORT));
         mButtonSplitLine.setVisibility(View.GONE);
         mBtnWifiSettings.setVisibility(View.GONE);
+        if(WebService.isStarted()){
+            mTxtStateHint.setText(R.string.pls_input_the_following_address_in_pc_browser);
+            mTxtAddress.setVisibility(View.VISIBLE);
+            mTxtAddress.setText(String.format(context.getString(R.string.http_address), ipAddr, Constants.HTTP_PORT));
+
+
+        }else{
+            mTxtStateHint.setText(R.string.str_file_share_tips);
+            mTxtAddress.setVisibility(View.GONE);
+        }
+
     }
 
     void onDialogDismiss(DialogInterface dialog) {
@@ -179,6 +194,13 @@ public class PopupMenuDialog {
             RxBus.get().post(Constants.RxBusEventType.POPUP_MENU_DIALOG_SHOW_DISMISS, Constants.MSG_DIALOG_DISMISS);
             unregisterWifiConnectChangedReceiver();
             RxBus.get().unregister(PopupMenuDialog.this);
+
         }
+    }
+
+    @Subscribe(tags = {@Tag(Constants.RxBusEventType.FILE_SHARE_SERVICE_STATUS)})
+    public void onFileShareServiceStatus(Boolean isStarted) {
+        mImgFileState.setImageResource(isStarted ? R.drawable.icon_file_share_s : R.drawable.icon_file_share_n);
+        mTxtFileHint.setText(isStarted ? R.string.str_file_share_started : R.string.str_file_share_unopened);
     }
 }

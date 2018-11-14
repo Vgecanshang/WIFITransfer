@@ -2,60 +2,52 @@ package cy.com.wifitransfer;
 
 import android.Manifest;
 import android.animation.Animator;
-import android.animation.ObjectAnimator;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
-import android.os.Build;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
-import android.support.v4.content.FileProvider;
 import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.GridLayoutManager;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.support.v7.widget.SwitchCompat;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.AccelerateInterpolator;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-
-import android.widget.Toast;
-import butterknife.*;
+import android.widget.*;
+import butterknife.BindView;
+import butterknife.ButterKnife;
+import butterknife.OnClick;
+import butterknife.Unbinder;
 import com.bumptech.glide.Glide;
 import com.cy.cylibrary.DynamicPermission.ApplyPermissionUtil;
 import com.hwangjr.rxbus.RxBus;
 import com.hwangjr.rxbus.annotation.Subscribe;
 import com.hwangjr.rxbus.annotation.Tag;
 import com.hwangjr.rxbus.thread.EventThread;
+import cy.com.wifitransfer.base.Constants;
+import cy.com.wifitransfer.bean.ApkFile;
+import cy.com.wifitransfer.bean.BaseFile;
+import cy.com.wifitransfer.bean.TransferFile;
+import cy.com.wifitransfer.util.ApkUtil;
+import cy.com.wifitransfer.view.PopupMenuDialog;
+import timber.log.Timber;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-import cy.com.wifitransfer.base.Constants;
-import cy.com.wifitransfer.bean.ApkFile;
-import cy.com.wifitransfer.bean.BaseFile;
-import cy.com.wifitransfer.bean.TransferFile;
-import cy.com.wifitransfer.view.PopupMenuDialog;
-import rx.Observable;
-import rx.Observer;
-import rx.Subscriber;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
-import timber.log.Timber;
-
 import static com.cy.cylibrary.DynamicPermission.ApplyPermissionUtil.TYPE_EXTERNAL_STORAGE;
-import static cy.com.wifitransfer.bean.BaseFile.FILE_TYPE_APK;
-import static cy.com.wifitransfer.bean.BaseFile.FILE_TYPE_JPG;
-import static cy.com.wifitransfer.bean.BaseFile.FILE_TYPE_PNG;
+import static com.cy.cylibrary.DynamicPermission.ApplyPermissionUtil.TYPE_REQUEST_INSTALL_PACKAGES;
+import static cy.com.wifitransfer.bean.BaseFile.*;
 
+/**
+ * @author cy
+ */
 public class MainActivity extends AppCompatActivity implements Animator.AnimatorListener {
 
     Unbinder mUnbinder;
@@ -65,18 +57,46 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
     FloatingActionButton mFab;
     @BindView(R.id.recyclerView)
     RecyclerView recyclerView;
-
+    @BindView(R.id.rl_no_data)
+    View mNoDataView;
+    @BindView(R.id.progress_bar)
+    ProgressBar progress_bar;
     List<TransferFile> files = new ArrayList<>();
     FileAdapter fileAdapter;
 
     private ApplyPermissionUtil permissionUtil = null;//三方动态申请权限工具类
+    /** 需要安装的APK文件（适配8.0的安装） */
+    private  TransferFile installFile = null;
 
+    private AppInstallReceiver appInstallReceiver = null;
+
+    private SwitchCompat switch_btn;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mUnbinder = ButterKnife.bind(this);
-        mToolbar.setLogo(R.mipmap.ic_launcher);
+        mToolbar.setLogo(R.mipmap.ic_logo);
+        switch_btn  = mToolbar.findViewById(R.id.switch_btn);
+        switch_btn.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+
+                if(isChecked){
+                    Toast.makeText(getApplicationContext() , "服务已开启...", Toast.LENGTH_LONG).show();
+                    if(!WebService.isStarted()){
+                        WebService.start(MainActivity.this);
+                    }
+                    new PopupMenuDialog(MainActivity.this).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
+                    startRefresh();
+                }else{
+                    Toast.makeText(getApplicationContext() , "服务已关闭...", Toast.LENGTH_LONG).show();
+                    WebService.stop(MainActivity.this);
+                    stopRefresh();
+                }
+
+            }
+        });
         setSupportActionBar(mToolbar);
         Timber.plant(new Timber.DebugTree());
         RxBus.get().register(this);
@@ -85,7 +105,52 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
         permissionUtil = new ApplyPermissionUtil(MainActivity.this, requestPermissionsListener);
         permissionUtil.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, TYPE_EXTERNAL_STORAGE);
 
+        registerAppInstallReceiver();
+
+
     }
+
+
+    /**
+     * 开始刷新动画
+     *
+     * 开始的时候，设置setIndeterminateDrawable和setProgressDrawable为定义的xml文件，即可开始转动。
+     * 结束的时候，设置setIndeterminateDrawable和setProgressDrawable为固定的图片，即可停止转动。
+     */
+    public void startRefresh() {
+//        progress_bar.setIndeterminateDrawable(getResources().getDrawable(
+//                R.drawable.normal_loading_style));
+//        progress_bar.setProgressDrawable(getResources().getDrawable(
+//                R.drawable.normal_loading_style));
+        progress_bar.setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * 停止刷新动画
+     */
+    public void stopRefresh() {
+//        progress_bar.setIndeterminateDrawable(getResources().getDrawable(
+//                R.drawable.icon_waiting));
+//        progress_bar.setProgressDrawable(getResources().getDrawable(
+//                R.drawable.icon_waiting));
+        progress_bar.setVisibility(View.GONE);
+    }
+
+    /**
+     * 在Android 8.0的平台上，应用不能对大部分的广播进行静态注册
+     * 监听APK的安装和卸载 不能使用静态广播，只能使用动态广播
+     * */
+    private void registerAppInstallReceiver(){
+        appInstallReceiver = new AppInstallReceiver();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+        filter.addDataScheme("package");
+        registerReceiver(appInstallReceiver , filter);
+    }
+
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -100,9 +165,17 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
                 case TYPE_EXTERNAL_STORAGE:
                     if (b) {
                         Toast.makeText(MainActivity.this, "获取文件读取权限成功...", Toast.LENGTH_LONG).show();
+                        //第一次安装时候 没有读写权限，导致没有读取本地的文件，则在获取权限成功后 需要重新读一遍
+                        RxBus.get().post(Constants.RxBusEventType.LOAD_FILE_LIST, 0);
                     } else {
                         Toast.makeText(MainActivity.this, "获取读写权限失败...", Toast.LENGTH_LONG).show();
                         finish();
+                    }
+                    break;
+                case TYPE_REQUEST_INSTALL_PACKAGES:
+                    if (b) {
+                        Toast.makeText(MainActivity.this, "获取安装应用权限成功...", Toast.LENGTH_LONG).show();
+                        ApkUtil.installApk(MainActivity.this, installFile);
                     }
                     break;
                 default:
@@ -111,33 +184,42 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
         }
     };
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        permissionUtil.listenerInstallPackagePermissionResult(requestCode , resultCode , data);
+
+    }
 
     @OnClick(R.id.fab)
     public void onClick(View view) {
-        ObjectAnimator objectAnimator = ObjectAnimator.ofFloat(mFab, "translationY", 0, mFab.getHeight() * 2).setDuration(200L);
-        objectAnimator.setInterpolator(new AccelerateInterpolator());
-        objectAnimator.addListener(this);
-        objectAnimator.start();
+//        ObjectAnimator objectAnimator = ObjectAnimator.ofFloat(mFab, "translationY", 0, mFab.getHeight() * 2).setDuration(200L);
+//        objectAnimator.setInterpolator(new AccelerateInterpolator());
+//        objectAnimator.addListener(this);
+//        objectAnimator.start();
+        new PopupMenuDialog(MainActivity.this).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
     }
 
 
 
     @Subscribe(tags = {@Tag(Constants.RxBusEventType.POPUP_MENU_DIALOG_SHOW_DISMISS)})
     public void onPopupMenuDialogDismiss(Integer type) {
-        if (type == Constants.MSG_DIALOG_DISMISS) {
-            WebService.stop(this);
-            ObjectAnimator objectAnimator = ObjectAnimator.ofFloat(mFab, "translationY", mFab.getHeight() * 2, 0).setDuration(200L);
-            objectAnimator.setInterpolator(new AccelerateInterpolator());
-            objectAnimator.start();
-        }
+//        if (type == Constants.MSG_DIALOG_DISMISS) {
+//            WebService.stop(this);
+//            ObjectAnimator objectAnimator = ObjectAnimator.ofFloat(mFab, "translationY", mFab.getHeight() * 2, 0).setDuration(200L);
+//            objectAnimator.setInterpolator(new AccelerateInterpolator());
+//            objectAnimator.start();
+//        }
     }
 
     @Override
     public void onAnimationStart(Animator animation) {
         Log.d("WebService", "WebService MainActivity start.");
-        WebService.start(this);
-        new PopupMenuDialog(this).builder().setCancelable(false)
-                .setCanceledOnTouchOutside(false).show();
+//        if (!WebService.isStarted()){
+//            WebService.start(this);
+//        }
+//        new PopupMenuDialog(this).builder().setCancelable(false)
+//                .setCanceledOnTouchOutside(false).show();
     }
 
     @Override
@@ -158,50 +240,61 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
 //        mBookList.setLayoutManager(new GridLayoutManager(this, 3));
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(fileAdapter);
-        RxBus.get().post(Constants.RxBusEventType.LOAD_FILE_LIST, 0);
     }
 
     @Subscribe(thread = EventThread.IO, tags = {@Tag(Constants.RxBusEventType.LOAD_FILE_LIST)})
     public void loadFileList(Integer type) {
         Timber.d("loadFileList:" + Thread.currentThread().getName());
         List<TransferFile> fileList = loadFileData();
-        ;
+
         runOnUiThread(() -> {
             files.clear();
             files.addAll(fileList);
             fileAdapter.notifyDataSetChanged();
-        });
-    }
 
-    @Deprecated
-    private void loadFileList() {
-        Observable.create(new Observable.OnSubscribe<List<TransferFile>>() {
-            @Override
-            public void call(Subscriber<? super List<TransferFile>> subscriber) {
-                List<TransferFile> tFiles = loadFileData();
-                subscriber.onNext(tFiles);
-                subscriber.onCompleted();
-            }
-        }).subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Observer<List<TransferFile>>() {
-            @Override
-            public void onCompleted() {
-                fileAdapter.notifyDataSetChanged();
-            }
-
-            @Override
-            public void onError(Throwable e) {
-                fileAdapter.notifyDataSetChanged();
-            }
-
-            @Override
-            public void onNext(List<TransferFile> filesList) {
-                files.clear();
-                files.addAll(filesList);
+            if (files == null || files.size() <= 0) {
+                mNoDataView.setVisibility(View.VISIBLE);
+                recyclerView.setVisibility(View.GONE);
+            } else {
+                mNoDataView.setVisibility(View.GONE);
+                recyclerView.setVisibility(View.VISIBLE);
             }
         });
+
+
     }
 
-    class FileAdapter extends RecyclerView.Adapter<FileAdapter.MyViewHolder> {
+//    @Deprecated
+//    private void loadFileList() {
+//        Observable.create(new Observable.OnSubscribe<List<TransferFile>>() {
+//            @Override
+//            public void call(Subscriber<? super List<TransferFile>> subscriber) {
+//                List<TransferFile> tFiles = loadFileData();
+//                subscriber.onNext(tFiles);
+//                subscriber.onCompleted();
+//            }
+//        }).subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Observer<List<TransferFile>>() {
+//            @Override
+//            public void onCompleted() {
+//                fileAdapter.notifyDataSetChanged();
+//            }
+//
+//            @Override
+//            public void onError(Throwable e) {
+//                fileAdapter.notifyDataSetChanged();
+//            }
+//
+//            @Override
+//            public void onNext(List<TransferFile> filesList) {
+//                files.clear();
+//                files.addAll(filesList);
+//            }
+//        });
+//    }
+
+
+    private int[] itemBgRes = new int[]{R.drawable.admin_data_item_bg_1 , R.drawable.admin_data_item_bg_2 , R.drawable.admin_data_item_bg_3 , R.drawable.admin_data_item_bg_4};
+    public class FileAdapter extends RecyclerView.Adapter<FileAdapter.MyViewHolder> {
 
         @Override
         public MyViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
@@ -213,63 +306,7 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
 
         @Override
         public void onBindViewHolder(final MyViewHolder holder, int position) {
-            TransferFile file = files.get(position);
-            holder.tvName.setText(file.getName());
-            holder.tvFilePath.setText(file.getPath());
-            holder.tvSize.setText(file.getSize());
-            holder.tvInstall.setVisibility(View.GONE);
-            holder.tvUnInstall.setVisibility(View.GONE);
-            if (file.getType() == FILE_TYPE_APK) {
-                holder.ivIcon.setImageDrawable(file.getIcon());
-                if (((ApkFile) file).isInstall()) {
-                    holder.tvUnInstall.setTag(file);
-                    holder.tvInstall.setVisibility(View.GONE);
-                    holder.tvUnInstall.setVisibility(View.VISIBLE);
-                    holder.tvUnInstall.setOnClickListener(v -> {
-                        TransferFile transferFile = (TransferFile) v.getTag();
-                        unInstallApk(transferFile);
-                    });
-                } else {
-                    holder.tvInstall.setTag(file);
-                    holder.tvInstall.setVisibility(View.VISIBLE);
-                    holder.tvUnInstall.setVisibility(View.GONE);
-                    holder.tvInstall.setOnClickListener(v -> {
-                        TransferFile transferFile = (TransferFile) v.getTag();
-
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            boolean b = getPackageManager().canRequestPackageInstalls();
-                            if (b) {
-                                installApk(transferFile);
-                            } else {
-                                permissionUtil.requestPermissions(new String[]{Manifest.permission.REQUEST_INSTALL_PACKAGES}, TYPE_EXTERNAL_STORAGE);
-                            }
-                        } else {
-                            installApk(transferFile);
-                        }
-
-
-                    });
-                }
-            }else if(file.getType() == FILE_TYPE_JPG || file.getType() == FILE_TYPE_PNG){
-                //本地文件
-                File imgFile = new File(file.getPath());
-                //加载图片
-                Glide.with(MainActivity.this).load(imgFile).into(holder.ivIcon);
-//                holder.ll_item.setOnClickListener( v -> {
-//                    //getUrl()获取文件目录，例如返回值为/storage/sdcard1/MIUI/music/mp3_hd/单色冰淇凌_单色凌.mp3  
-//                    File parentFlie = new File(imgFile.getParent());
-//                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-//                    intent.setDataAndType(Uri.fromFile(parentFlie), "*/*");
-//                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-//                    startActivity(intent);
-//
-//                });
-
-            } else {
-                holder.ivIcon.setImageResource(R.drawable.ic_book_cover);
-            }
-
-
+            initViewItem(holder , position);
         }
 
         @Override
@@ -277,7 +314,7 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
             return files.size();
         }
 
-        class MyViewHolder extends RecyclerView.ViewHolder {
+       public class MyViewHolder extends RecyclerView.ViewHolder {
             LinearLayout ll_item;
             ImageView ivIcon;
             TextView tvName;
@@ -299,6 +336,7 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
         }
     }
 
+
     /**
      * 加载文件列表
      */
@@ -313,7 +351,7 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
                     int type = BaseFile.checkFilterType(f);
                     if (type == FILE_TYPE_APK) {
                         bean = new ApkFile();
-                        ApkFile.apkInfo((ApkFile) bean, f.getAbsolutePath(), MainActivity.this);
+                        ApkUtil.apkInfo((ApkFile) bean, f.getAbsolutePath(), MainActivity.this);
                     } else {
                         bean.setName(f.getName());
                     }
@@ -327,45 +365,60 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
         return transferFiles;
     }
 
-    /** 安装APK （已兼容Android7.0及以上的安装   8.0的未测试） */
-    private void installApk(TransferFile file) {
-        ApkFile aFile = (ApkFile) file;
-        File apkFile = new File(aFile.getPath());
-        Intent intent = new Intent(Intent.ACTION_VIEW);
-        Uri contentUri;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            //兼容Android7.0及以上的 安装APP的
-            contentUri = FileProvider.getUriForFile(getApplicationContext(), BuildConfig.APPLICATION_ID+".fileprovider", apkFile);
-            intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+    /** 文件Item View的处理 */
+    public void initViewItem(FileAdapter.MyViewHolder holder , int position){
+        TransferFile file = files.get(position);
+        holder.ll_item.setBackgroundResource(itemBgRes[position%itemBgRes.length]);
+        holder.tvName.setText(file.getName());
+        holder.tvFilePath.setText(file.getPath());
+        holder.tvSize.setText(file.getSize());
+        holder.tvInstall.setVisibility(View.GONE);
+        holder.tvUnInstall.setVisibility(View.GONE);
+        if (file.getType() == FILE_TYPE_APK) {
+            holder.ivIcon.setImageDrawable(file.getIcon());
+            if (((ApkFile) file).isInstall()) {
+                holder.tvUnInstall.setTag(file);
+                holder.tvInstall.setVisibility(View.GONE);
+                holder.tvUnInstall.setVisibility(View.VISIBLE);
+                holder.tvUnInstall.setOnClickListener(v -> {
+                    TransferFile transferFile = (TransferFile) v.getTag();
+                    ApkUtil.unInstallApk(MainActivity.this , transferFile);
+                });
+            } else {
+                holder.tvInstall.setTag(file);
+                holder.tvInstall.setVisibility(View.VISIBLE);
+                holder.tvUnInstall.setVisibility(View.GONE);
+                holder.tvInstall.setOnClickListener(v -> {
+                    TransferFile transferFile = (TransferFile) v.getTag();
+                    installFile = transferFile;
+                    permissionUtil.requestPermissions(new String[]{Manifest.permission.REQUEST_INSTALL_PACKAGES}, TYPE_REQUEST_INSTALL_PACKAGES);
+                });
+            }
+        }else if(file.getType() == FILE_TYPE_JPG || file.getType() == FILE_TYPE_PNG){
+            //本地文件
+            File imgFile = new File(file.getPath());
+            //加载图片
+            Glide.with(MainActivity.this).load(imgFile).into(holder.ivIcon);
+//                holder.ll_item.setOnClickListener( v -> {
+//                    //getUrl()获取文件目录，例如返回值为/storage/sdcard1/MIUI/music/mp3_hd/单色冰淇凌_单色凌.mp3  
+//                    File parentFlie = new File(imgFile.getParent());
+//                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+//                    intent.setDataAndType(Uri.fromFile(parentFlie), "*/*");
+//                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+//                    startActivity(intent);
+//
+//                });
+
         } else {
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            contentUri = Uri.fromFile(apkFile);
+            holder.ivIcon.setImageResource(R.drawable.ic_book_cover);
         }
-        intent.setDataAndType(contentUri,
-                "application/vnd.android.package-archive");
-        startActivity(intent);
     }
-
-    /**
-     * 卸载APK
-     */
-    private void unInstallApk(TransferFile file) {
-        ApkFile apkFile = (ApkFile) file;
-        Intent uninstall_intent = new Intent();
-        uninstall_intent.setAction(Intent.ACTION_DELETE);
-        uninstall_intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        uninstall_intent.setData(Uri.parse("package:" + apkFile.getPackageName()));
-        startActivity(uninstall_intent);
-    }
-
 
     /**
      * APK安装和卸载的广播
      */
     public static class AppInstallReceiver extends BroadcastReceiver {
         private final static String TAG = "AppInstallReceiver";
-
-
         @Override
         public void onReceive(Context context, Intent intent) {
             String packageName = intent.getData().getSchemeSpecificPart();
@@ -388,6 +441,9 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
 
     @Override
     protected void onDestroy() {
+        if(appInstallReceiver != null){
+            unregisterReceiver(appInstallReceiver);
+        }
         super.onDestroy();
         WebService.stop(this);
         if (mUnbinder != null) {

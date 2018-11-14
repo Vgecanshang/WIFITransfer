@@ -45,5 +45,5 @@ dependencies {
     implementation deps.androidasync
     implementation deps.timber
 
-    implementation 'com.github.Vgecanshang:CyongLibrary:v1.0.2'
+    implementation 'com.github.Vgecanshang:CyongLibrary:v1.0.6'
 }

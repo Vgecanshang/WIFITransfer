@@ -3,6 +3,8 @@ package cy.com.wifitransfer;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build;
+import android.os.Environment;
 import android.os.IBinder;
 import android.text.TextUtils;
 
@@ -23,14 +25,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.text.DecimalFormat;
@@ -61,7 +56,8 @@ public class WebService extends Service{
     FileUploadHolder fileUploadHolder = new FileUploadHolder();
     private AsyncHttpServer server = new AsyncHttpServer();
     private AsyncServer mAsyncServer = new AsyncServer();
-
+    /** 服务是否开启 */
+    private static boolean isStarted = false;
     public static void start(Context context) {
         Intent intent = new Intent(context, WebService.class);
         intent.setAction(ACTION_START_WEB_SERVICE);
@@ -86,23 +82,15 @@ public class WebService extends Service{
             String action = intent.getAction();
             if (ACTION_START_WEB_SERVICE.equals(action)) {
                 startServer();
+                isStarted = true;
             } else if (ACTION_STOP_WEB_SERVICE.equals(action)) {
                 stopSelf();
+                isStarted = false;
             }
         }
         return super.onStartCommand(intent, flags, startId);
     }
 
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        if (server != null) {
-            server.stop();
-        }
-        if (mAsyncServer != null) {
-            mAsyncServer.stop();
-        }
-    }
 
     private void startServer() {
 
@@ -114,12 +102,23 @@ public class WebService extends Service{
         //index page
         server.get("/", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
             try {
-                response.send(getIndexContent());
+                response.send(getIndexContent("wifi/index.html"));
             } catch (IOException e) {
                 e.printStackTrace();
                 response.code(500).end();
             }
         });
+
+        //screenshot page
+        server.get("/screenshot", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
+            try {
+                response.send(getIndexContent("wifi/screenshot.html"));
+            } catch (IOException e) {
+                e.printStackTrace();
+                response.code(500).end();
+            }
+        });
+
         //query upload list
         server.get("/files", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
             JSONArray array = new JSONArray();
@@ -152,10 +151,62 @@ public class WebService extends Service{
             }
             response.send(array.toString());
         });
+
+        //device screenshot list
+        server.get("/screenshotFiles", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
+            JSONArray array = new JSONArray();
+            File dir = Constants.SCREENSHOT_DIR;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dir = Constants.SCREENSHOT_DIR_26;
+            }
+            String[] fileNames = dir.list();
+            if(fileNames != null){
+                for (String fileName: fileNames) {
+                    File file = new File(dir , fileName);
+                    if(file.exists() && file.isFile() && (file.getName().endsWith(".png") || file.getName().endsWith(".jpg"))){
+                        try {
+                            JSONObject obj = new JSONObject();
+                            obj.put("name", fileName);
+                            obj.put("path", file.getAbsolutePath());
+                            array.put(obj);
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+            response.send(array.toString());
+        });
+
+        //view screenshot
+        server.get("/screenshotFiles/.*", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
+                //共享手机截屏图片的处理
+                String path = request.getPath().replace("/screenshotFiles/", "");
+                try {
+                    path = URLDecoder.decode(path, "utf-8");
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
+                File file = new File(path);
+                if (file.exists() && file.isFile()) {
+                    try {
+                        FileInputStream fis = new FileInputStream(file);
+                        response.sendStream(fis, fis.available());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    return;
+                }
+                response.code(404).send("Not found!");
+        });
+
+
+
         //delete
         server.post("/files/.*", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
             final UrlEncodedFormBody body = (UrlEncodedFormBody) request.getBody();
             if ("delete".equalsIgnoreCase(body.get().getString("_method"))) {
+                //文件共享的删除操作
                 String path = request.getPath().replace("/files/", "");
                 try {
                     path = URLDecoder.decode(path, "utf-8");
@@ -167,6 +218,26 @@ public class WebService extends Service{
                     file.delete();
                     RxBus.get().post(Constants.RxBusEventType.LOAD_FILE_LIST, 0);
                 }
+            }else{
+                //共享手机截屏图片的处理
+                String path = request.getPath().replace("/files/", "");
+                try {
+                    path = URLDecoder.decode(path, "utf-8");
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
+                File file = new File(path);
+                if (file.exists() && file.isFile()) {
+                    try {
+                        FileInputStream fis = new FileInputStream(file);
+                        response.sendStream(fis, fis.available());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    return;
+                }
+                response.code(404).send("Not found!");
+
             }
             response.end();
         });
@@ -190,6 +261,7 @@ public class WebService extends Service{
             }
             response.code(404).send("Not found!");
         });
+
         //upload
         server.post("/files", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
                     final MultipartFormDataBody body = (MultipartFormDataBody) request.getBody();
@@ -240,15 +312,22 @@ public class WebService extends Service{
                 }
 
         );
-        server.listen(mAsyncServer, Constants.HTTP_PORT);
 
+
+
+        //共享手机截图的处理
+
+        server.listen(mAsyncServer, Constants.HTTP_PORT);
         Log.d("WebService" , "WebService startServer complete.");
+        RxBus.get().post(Constants.RxBusEventType.FILE_SHARE_SERVICE_STATUS, true);
+
+
     }
 
-    private String getIndexContent() throws IOException {
+    private String getIndexContent(String fileName) throws IOException {
         BufferedInputStream bInputStream = null;
         try {
-            bInputStream = new BufferedInputStream(getAssets().open("wifi/index.html"));
+            bInputStream = new BufferedInputStream(getAssets().open(fileName));
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             int len = 0;
             byte[] tmp = new byte[10240];
@@ -269,6 +348,7 @@ public class WebService extends Service{
             }
         }
     }
+
 
     private void sendResources(final AsyncHttpServerRequest request, final AsyncHttpServerResponse response) {
         try {
@@ -339,7 +419,7 @@ public class WebService extends Service{
             if (!Constants.DIR.exists()) {
                 Constants.DIR.mkdirs();
             }
-            this.recievedFile = new File(Constants.DIR, this.fileName);//TODO 这里新建文件会失败， 测试原因应该是要动态申请读写权限
+            this.recievedFile = new File(Constants.DIR, this.fileName);
             Timber.d(recievedFile.getAbsolutePath());
             try {
                 fileOutPutStream = new BufferedOutputStream(new FileOutputStream(recievedFile));
@@ -369,5 +449,22 @@ public class WebService extends Service{
             }
             totalSize += data.length;
         }
+    }
+
+
+    public static boolean isStarted() {
+        return isStarted;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (server != null) {
+            server.stop();
+        }
+        if (mAsyncServer != null) {
+            mAsyncServer.stop();
+        }
+        RxBus.get().post(Constants.RxBusEventType.FILE_SHARE_SERVICE_STATUS, false);
     }
 }

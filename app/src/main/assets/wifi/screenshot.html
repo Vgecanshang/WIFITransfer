@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="scripts/jquery-1.7.2.min.js" type="text/javascript"></script>
+    <title>手机截图</title>
+    <link rel="stylesheet" href="css/style.css" type="text/css" charset="utf-8">
+    <script type="text/javascript">
+        $(function(){
+            var now  = new Date();
+            var url = 'screenshotFiles' + '?' + now.getTime();
+            var $img = $("#fileImg");
+            //请求JSON数据
+            $.getJSON(url , function(data){
+                //编辑JSON数据
+                for(var i = data.length - 1 ; i >= 0  ; i --){
+                    //为每个对象生成一个li标签，添加页面的ul中
+                    var $li = $('<li class="screenshot" title="点击可预览图片">'+ data[i].name + '</li>');
+                    $li.attr("path" , data[i].path);
+                    $("#fileList").append($li);
+                    $li.click(function(){
+                        //条目点击事件
+                        var p = "/screenshotFiles/" + $(this).attr("path");
+                        $img.attr("src", "/screenshotFiles/" + $(this).attr("path"))
+                    });
+
+                    if(i == data.length -1){
+                        //默认显示第一张图片
+                        var p = "/screenshotFiles/" +  data[i].path;
+                        $img.attr("src", "/screenshotFiles/" +  data[i].path)
+                    }
+                }
+            });
+
+        });
+    </script>
+</head>
+
+<body>
+    <div><strong id="screenshot_title">手机屏幕截图列表：</strong><p style="display:inline-block;">(点击条目可预览或下载图片)</p></div>
+    <ul id="fileList" style="float:left;" ></ul>
+    <img id="fileImg" src="" class="screenshot_img" alt="Smiley face">
+</body>
+
+</html>

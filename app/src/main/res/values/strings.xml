@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">WIFITransfer</string>
+    <string name="app_name">WI-FITransfer</string>
     <string name="wlan_enabled">WLAN服务已开启</string>
     <string name="wlan_disabled">WLAN服务未开启</string>
     <string name="pls_check_network_state">请检查您的网络设置</string>
@@ -8,5 +8,9 @@
     <string name="pls_input_the_following_address_in_pc_browser">请在电脑浏览器地址栏完整输入</string>
     <string name="cancel">取消</string>
     <string name="set_network">设置网络</string>
+    <string name="str_file_share_unopened">（文件共享服务暂未开启）</string>
+    <string name="str_file_share_started">（文件共享服务暂已开启）</string>
+    <string name="str_file_share_tips">请点击页面右上角开关按钮开启服务）</string>
     <string name="http_address">http://%1$s:%2$d</string>
+    <string name="str_no_data">暂无任何文件</string>
 </resources>

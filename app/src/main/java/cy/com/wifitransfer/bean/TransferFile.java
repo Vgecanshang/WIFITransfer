@@ -17,4 +17,5 @@ public class TransferFile extends BaseFile {
     public void setIcon(Drawable icon) {
         this.icon = icon;
     }
+
 }
