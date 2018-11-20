@@ -13,4 +13,5 @@
     <string name="str_file_share_tips">请点击页面右上角开关按钮开启服务）</string>
     <string name="http_address">http://%1$s:%2$d</string>
     <string name="str_no_data">暂无任何文件</string>
+    <string name="str_tips">1.点击右上角的按钮开关服务\n2.点击右下角的的Wifi按钮查看访问地址</string>
 </resources>

@@ -9,22 +9,24 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
-import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.SwitchCompat;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.*;
+import android.widget.ImageView;
+import android.widget.ProgressBar;
+import android.widget.Toast;
 import butterknife.BindView;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
 import butterknife.Unbinder;
 import com.bumptech.glide.Glide;
+import com.cy.cylibrary.CBaseActivity;
 import com.cy.cylibrary.DynamicPermission.ApplyPermissionUtil;
+import com.cy.cylibrary.recycler.common.CommonAdapter;
+import com.cy.cylibrary.recycler.common.base.ViewHolder;
 import com.hwangjr.rxbus.RxBus;
 import com.hwangjr.rxbus.annotation.Subscribe;
 import com.hwangjr.rxbus.annotation.Tag;
@@ -35,6 +37,11 @@ import cy.com.wifitransfer.bean.BaseFile;
 import cy.com.wifitransfer.bean.TransferFile;
 import cy.com.wifitransfer.util.ApkUtil;
 import cy.com.wifitransfer.view.PopupMenuDialog;
+import rx.Observable;
+import rx.Observer;
+import rx.Subscriber;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.schedulers.Schedulers;
 import timber.log.Timber;
 
 import java.io.File;
@@ -48,7 +55,7 @@ import static cy.com.wifitransfer.bean.BaseFile.*;
 /**
  * @author cy
  */
-public class MainActivity extends AppCompatActivity implements Animator.AnimatorListener {
+public class MainActivity extends CBaseActivity implements Animator.AnimatorListener {
 
     Unbinder mUnbinder;
     @BindView(R.id.toolbar)
@@ -61,15 +68,14 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
     View mNoDataView;
     @BindView(R.id.progress_bar)
     ProgressBar progress_bar;
-    List<TransferFile> files = new ArrayList<>();
-    FileAdapter fileAdapter;
-
-    private ApplyPermissionUtil permissionUtil = null;//三方动态申请权限工具类
+    private CommonAdapter<TransferFile> filesAdapter ;
+    private List<TransferFile> files = new ArrayList<>();
+    private int[] itemBgRes = new int[]{R.drawable.admin_data_item_bg_1 , R.drawable.admin_data_item_bg_2 , R.drawable.admin_data_item_bg_3 , R.drawable.admin_data_item_bg_4};
+    //三方动态申请权限工具类
+    private ApplyPermissionUtil permissionUtil = null;
     /** 需要安装的APK文件（适配8.0的安装） */
-    private  TransferFile installFile = null;
-
+    private TransferFile installFile = null;
     private AppInstallReceiver appInstallReceiver = null;
-
     private SwitchCompat switch_btn;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,36 +84,30 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
         mUnbinder = ButterKnife.bind(this);
         mToolbar.setLogo(R.mipmap.ic_logo);
         switch_btn  = mToolbar.findViewById(R.id.switch_btn);
-        switch_btn.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-
-                if(isChecked){
-                    Toast.makeText(getApplicationContext() , "服务已开启...", Toast.LENGTH_LONG).show();
-                    if(!WebService.isStarted()){
-                        WebService.start(MainActivity.this);
-                    }
-                    new PopupMenuDialog(MainActivity.this).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
-                    startRefresh();
-                }else{
-                    Toast.makeText(getApplicationContext() , "服务已关闭...", Toast.LENGTH_LONG).show();
-                    WebService.stop(MainActivity.this);
-                    stopRefresh();
+        switch_btn.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if(isChecked){
+                Toast.makeText(getApplicationContext() , "服务已开启...", Toast.LENGTH_LONG).show();
+                if(!WebService.isStarted()){
+                    WebService.start(getActivity());
                 }
-
+                new PopupMenuDialog(getActivity()).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
+                startRefresh();
+            }else{
+                Toast.makeText(getApplicationContext() , "服务已关闭...", Toast.LENGTH_LONG).show();
+                WebService.stop(getActivity());
+                stopRefresh();
             }
+
         });
         setSupportActionBar(mToolbar);
         Timber.plant(new Timber.DebugTree());
-        RxBus.get().register(this);
+        RxBus.get().register(getActivity());
         initRecyclerView();
 
-        permissionUtil = new ApplyPermissionUtil(MainActivity.this, requestPermissionsListener);
+        permissionUtil = new ApplyPermissionUtil(getActivity(), requestPermissionsListener);
         permissionUtil.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, TYPE_EXTERNAL_STORAGE);
 
         registerAppInstallReceiver();
-
-
     }
 
 
@@ -118,10 +118,6 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
      * 结束的时候，设置setIndeterminateDrawable和setProgressDrawable为固定的图片，即可停止转动。
      */
     public void startRefresh() {
-//        progress_bar.setIndeterminateDrawable(getResources().getDrawable(
-//                R.drawable.normal_loading_style));
-//        progress_bar.setProgressDrawable(getResources().getDrawable(
-//                R.drawable.normal_loading_style));
         progress_bar.setVisibility(View.VISIBLE);
     }
 
@@ -129,10 +125,6 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
      * 停止刷新动画
      */
     public void stopRefresh() {
-//        progress_bar.setIndeterminateDrawable(getResources().getDrawable(
-//                R.drawable.icon_waiting));
-//        progress_bar.setProgressDrawable(getResources().getDrawable(
-//                R.drawable.icon_waiting));
         progress_bar.setVisibility(View.GONE);
     }
 
@@ -164,18 +156,18 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
             switch (i) {
                 case TYPE_EXTERNAL_STORAGE:
                     if (b) {
-                        Toast.makeText(MainActivity.this, "获取文件读取权限成功...", Toast.LENGTH_LONG).show();
+                        Toast.makeText(getActivity(), "获取文件读取权限成功...", Toast.LENGTH_LONG).show();
                         //第一次安装时候 没有读写权限，导致没有读取本地的文件，则在获取权限成功后 需要重新读一遍
                         RxBus.get().post(Constants.RxBusEventType.LOAD_FILE_LIST, 0);
                     } else {
-                        Toast.makeText(MainActivity.this, "获取读写权限失败...", Toast.LENGTH_LONG).show();
+                        Toast.makeText(getActivity(), "获取读写权限失败...", Toast.LENGTH_LONG).show();
                         finish();
                     }
                     break;
                 case TYPE_REQUEST_INSTALL_PACKAGES:
                     if (b) {
-                        Toast.makeText(MainActivity.this, "获取安装应用权限成功...", Toast.LENGTH_LONG).show();
-                        ApkUtil.installApk(MainActivity.this, installFile);
+                        Toast.makeText(getActivity(), "获取安装应用权限成功...", Toast.LENGTH_LONG).show();
+                        ApkUtil.installApk(getActivity(), installFile);
                     }
                     break;
                 default:
@@ -197,13 +189,14 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
 //        objectAnimator.setInterpolator(new AccelerateInterpolator());
 //        objectAnimator.addListener(this);
 //        objectAnimator.start();
-        new PopupMenuDialog(MainActivity.this).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
+        new PopupMenuDialog(getActivity()).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
     }
 
 
 
     @Subscribe(tags = {@Tag(Constants.RxBusEventType.POPUP_MENU_DIALOG_SHOW_DISMISS)})
     public void onPopupMenuDialogDismiss(Integer type) {
+        //弹窗消失不再停止服务
 //        if (type == Constants.MSG_DIALOG_DISMISS) {
 //            WebService.stop(this);
 //            ObjectAnimator objectAnimator = ObjectAnimator.ofFloat(mFab, "translationY", mFab.getHeight() * 2, 0).setDuration(200L);
@@ -215,6 +208,7 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
     @Override
     public void onAnimationStart(Animator animation) {
         Log.d("WebService", "WebService MainActivity start.");
+        //弹窗动画启动的时候不再启动服务-
 //        if (!WebService.isStarted()){
 //            WebService.start(this);
 //        }
@@ -235,11 +229,25 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
     }
 
     private void initRecyclerView() {
-        fileAdapter = new FileAdapter();
-        recyclerView.setHasFixedSize(true);
-//        mBookList.setLayoutManager(new GridLayoutManager(this, 3));
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setAdapter(fileAdapter);
+
+        filesAdapter = new CommonAdapter<TransferFile>(getActivity() , R.layout.layout_book_item , files) {
+            @Override
+            protected void convert(ViewHolder holder, TransferFile transferFile, int position) {
+                initViewItem(holder , transferFile , position);
+            }
+        };
+
+        filesAdapter.setOnItemClickListener((view, holder, o, position) -> {
+            Toast.makeText(getActivity() , "我是"+o.getName() , Toast.LENGTH_SHORT).show();
+        });
+
+        recyclerView.setLayoutManager(new LinearLayoutManager(getActivity()));
+        recyclerView.setAdapter(filesAdapter);
+//        mHeaderAndFooterWrapper = new HeaderAndFooterWrapper(filesAdapter);
+//        //Error:HeaderAndFooterWrapper.addHeaderView后导致OnItemClick position错乱了
+//        mHeaderAndFooterWrapper.addHeaderView(View.inflate(MainActivity.this , R.layout.layout_main_header , null));
+//        recyclerView.setAdapter(mHeaderAndFooterWrapper);
+
     }
 
     @Subscribe(thread = EventThread.IO, tags = {@Tag(Constants.RxBusEventType.LOAD_FILE_LIST)})
@@ -250,8 +258,8 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
         runOnUiThread(() -> {
             files.clear();
             files.addAll(fileList);
-            fileAdapter.notifyDataSetChanged();
-
+            filesAdapter.notifyDataSetChanged();
+//            mHeaderAndFooterWrapper.notifyDataSetChanged();
             if (files == null || files.size() <= 0) {
                 mNoDataView.setVisibility(View.VISIBLE);
                 recyclerView.setVisibility(View.GONE);
@@ -264,76 +272,34 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
 
     }
 
-//    @Deprecated
-//    private void loadFileList() {
-//        Observable.create(new Observable.OnSubscribe<List<TransferFile>>() {
-//            @Override
-//            public void call(Subscriber<? super List<TransferFile>> subscriber) {
-//                List<TransferFile> tFiles = loadFileData();
-//                subscriber.onNext(tFiles);
-//                subscriber.onCompleted();
-//            }
-//        }).subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Observer<List<TransferFile>>() {
-//            @Override
-//            public void onCompleted() {
-//                fileAdapter.notifyDataSetChanged();
-//            }
-//
-//            @Override
-//            public void onError(Throwable e) {
-//                fileAdapter.notifyDataSetChanged();
-//            }
-//
-//            @Override
-//            public void onNext(List<TransferFile> filesList) {
-//                files.clear();
-//                files.addAll(filesList);
-//            }
-//        });
-//    }
 
-
-    private int[] itemBgRes = new int[]{R.drawable.admin_data_item_bg_1 , R.drawable.admin_data_item_bg_2 , R.drawable.admin_data_item_bg_3 , R.drawable.admin_data_item_bg_4};
-    public class FileAdapter extends RecyclerView.Adapter<FileAdapter.MyViewHolder> {
-
-        @Override
-        public MyViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-            MyViewHolder holder = new MyViewHolder(LayoutInflater.from(
-                    MainActivity.this).inflate(R.layout.layout_book_item, parent,
-                    false));
-            return holder;
-        }
-
-        @Override
-        public void onBindViewHolder(final MyViewHolder holder, int position) {
-            initViewItem(holder , position);
-        }
-
-        @Override
-        public int getItemCount() {
-            return files.size();
-        }
-
-       public class MyViewHolder extends RecyclerView.ViewHolder {
-            LinearLayout ll_item;
-            ImageView ivIcon;
-            TextView tvName;
-            TextView tvSize;
-            TextView tvFilePath;
-            TextView tvInstall;
-            TextView tvUnInstall;
-
-            public MyViewHolder(View view) {
-                super(view);
-                ll_item = view.findViewById(R.id.ll_item);
-                ivIcon = view.findViewById(R.id.iv_icon);
-                tvName = view.findViewById(R.id.tv_name);
-                tvSize = view.findViewById(R.id.tv_size);
-                tvFilePath = view.findViewById(R.id.tv_file_path);
-                tvInstall = view.findViewById(R.id.tv_install);
-                tvUnInstall = view.findViewById(R.id.tv_uninstall);
+    @Deprecated
+    private void loadFileList() {
+        //主动load本地的文件
+        Observable.create(new Observable.OnSubscribe<List<TransferFile>>() {
+            @Override
+            public void call(Subscriber<? super List<TransferFile>> subscriber) {
+                List<TransferFile> tFiles = loadFileData();
+                subscriber.onNext(tFiles);
+                subscriber.onCompleted();
             }
-        }
+        }).subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Observer<List<TransferFile>>() {
+            @Override
+            public void onCompleted() {
+                filesAdapter.notifyDataSetChanged();
+            }
+
+            @Override
+            public void onError(Throwable e) {
+                filesAdapter.notifyDataSetChanged();
+            }
+
+            @Override
+            public void onNext(List<TransferFile> filesList) {
+                files.clear();
+                files.addAll(filesList);
+            }
+        });
     }
 
 
@@ -366,29 +332,30 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
     }
 
     /** 文件Item View的处理 */
-    public void initViewItem(FileAdapter.MyViewHolder holder , int position){
-        TransferFile file = files.get(position);
-        holder.ll_item.setBackgroundResource(itemBgRes[position%itemBgRes.length]);
-        holder.tvName.setText(file.getName());
-        holder.tvFilePath.setText(file.getPath());
-        holder.tvSize.setText(file.getSize());
-        holder.tvInstall.setVisibility(View.GONE);
-        holder.tvUnInstall.setVisibility(View.GONE);
+    public void initViewItem(ViewHolder holder , TransferFile file , int position){
+        holder.getView(R.id.ll_item).setBackgroundResource(itemBgRes[position%itemBgRes.length]);
+        holder.setText(R.id.tv_name, file.getName());
+        holder.setText(R.id.tv_file_path, file.getPath());
+        holder.setText(R.id.tv_size, file.getSize());
+        holder.setVisible(R.id.tv_install , false);
+        holder.setVisible(R.id.tv_uninstall , false);
+        ImageView icon = holder.getView(R.id.iv_icon);
         if (file.getType() == FILE_TYPE_APK) {
-            holder.ivIcon.setImageDrawable(file.getIcon());
+            icon.setImageDrawable(file.getIcon());
             if (((ApkFile) file).isInstall()) {
-                holder.tvUnInstall.setTag(file);
-                holder.tvInstall.setVisibility(View.GONE);
-                holder.tvUnInstall.setVisibility(View.VISIBLE);
-                holder.tvUnInstall.setOnClickListener(v -> {
+                holder.getView(R.id.tv_uninstall).setTag(file);
+                holder.setVisible(R.id.tv_install , false);
+                holder.setVisible(R.id.tv_uninstall , true);
+                holder.getView(R.id.tv_uninstall).setOnClickListener(v -> {
                     TransferFile transferFile = (TransferFile) v.getTag();
-                    ApkUtil.unInstallApk(MainActivity.this , transferFile);
+                    ApkUtil.unInstallApk(getActivity() , transferFile);
                 });
             } else {
-                holder.tvInstall.setTag(file);
-                holder.tvInstall.setVisibility(View.VISIBLE);
-                holder.tvUnInstall.setVisibility(View.GONE);
-                holder.tvInstall.setOnClickListener(v -> {
+                holder.getView(R.id.tv_install).setTag(file);
+
+                holder.setVisible(R.id.tv_install , true);
+                holder.setVisible(R.id.tv_uninstall , false);
+                holder.getView(R.id.tv_install).setOnClickListener(v -> {
                     TransferFile transferFile = (TransferFile) v.getTag();
                     installFile = transferFile;
                     permissionUtil.requestPermissions(new String[]{Manifest.permission.REQUEST_INSTALL_PACKAGES}, TYPE_REQUEST_INSTALL_PACKAGES);
@@ -398,7 +365,8 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
             //本地文件
             File imgFile = new File(file.getPath());
             //加载图片
-            Glide.with(MainActivity.this).load(imgFile).into(holder.ivIcon);
+            Glide.with(getActivity()).load(imgFile).into(icon);
+            //在这里可以提供点击预览图片功能
 //                holder.ll_item.setOnClickListener( v -> {
 //                    //getUrl()获取文件目录，例如返回值为/storage/sdcard1/MIUI/music/mp3_hd/单色冰淇凌_单色凌.mp3  
 //                    File parentFlie = new File(imgFile.getParent());
@@ -410,7 +378,7 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
 //                });
 
         } else {
-            holder.ivIcon.setImageResource(R.drawable.ic_book_cover);
+            icon.setImageResource(R.drawable.ic_book_cover);
         }
     }
 
@@ -445,10 +413,20 @@ public class MainActivity extends AppCompatActivity implements Animator.Animator
             unregisterReceiver(appInstallReceiver);
         }
         super.onDestroy();
-        WebService.stop(this);
+        WebService.stop(getActivity());
         if (mUnbinder != null) {
             mUnbinder.unbind();
         }
-        RxBus.get().unregister(this);
+        RxBus.get().unregister(getActivity());
+    }
+
+    @Override
+    protected boolean hadSetSystemStatus() {
+        return true;
+    }
+
+    @Override
+    protected int getStatusColor() {
+        return R.color.colorPrimary;
     }
 }
