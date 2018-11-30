@@ -37,20 +37,23 @@
 
     <script language="javascript" type="text/javascript">
         $(document).ready(function () {
-            var menuYloc = $("#fileImg").offset().top;
+            var menuYloc = $("#fileImg").offset().top - 80;
             $(window).scroll(function () {
                 var offsetTop = menuYloc + $(window).scrollTop() + "px";
-                $("#fileImg").animate({ top: offsetTop }, { duration: 300, queue: false });
+                $("#screenshot_bg").animate({ top: offsetTop }, { duration: 300, queue: false });
             });
         });
     </script>
 
 </head>
 
-<body style="overflow-y:auto;">
+<body style="overflow-y:auto!important;">
     <div><strong id="screenshot_title">手机屏幕截图列表：</strong><p style="display:inline-block;">(点击条目可预览或下载图片)</p></div>
     <ul id="fileList" style="float:left;" ></ul>
-    <img id="fileImg" src="" class="screenshot_img" alt="Smiley face">
+    <div id="screenshot_bg" class="screenshot_bg">
+        <img id="fileImg" src="" class="screenshot_img" alt="Smiley face">
+    </div>
+
 </body>
 
 </html>

@@ -2,6 +2,7 @@ package cy.com.wifitransfer;
 
 import android.Manifest;
 import android.animation.Animator;
+import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -25,8 +26,10 @@ import butterknife.Unbinder;
 import com.bumptech.glide.Glide;
 import com.cy.cylibrary.CBaseActivity;
 import com.cy.cylibrary.DynamicPermission.ApplyPermissionUtil;
+import com.cy.cylibrary.DynamicPermission.PermissionUtil;
 import com.cy.cylibrary.recycler.common.CommonAdapter;
 import com.cy.cylibrary.recycler.common.base.ViewHolder;
+import com.cy.cylibrary.utils.CLogger;
 import com.hwangjr.rxbus.RxBus;
 import com.hwangjr.rxbus.annotation.Subscribe;
 import com.hwangjr.rxbus.annotation.Tag;
@@ -37,13 +40,12 @@ import cy.com.wifitransfer.bean.BaseFile;
 import cy.com.wifitransfer.bean.TransferFile;
 import cy.com.wifitransfer.util.ApkUtil;
 import cy.com.wifitransfer.view.PopupMenuDialog;
-import rx.Observable;
-import rx.Observer;
-import rx.Subscriber;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
+import io.reactivex.*;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Consumer;
+import io.reactivex.schedulers.Schedulers;
 import timber.log.Timber;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -71,12 +73,16 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
     private CommonAdapter<TransferFile> filesAdapter ;
     private List<TransferFile> files = new ArrayList<>();
     private int[] itemBgRes = new int[]{R.drawable.admin_data_item_bg_1 , R.drawable.admin_data_item_bg_2 , R.drawable.admin_data_item_bg_3 , R.drawable.admin_data_item_bg_4};
-    //三方动态申请权限工具类
-    private ApplyPermissionUtil permissionUtil = null;
+
     /** 需要安装的APK文件（适配8.0的安装） */
     private TransferFile installFile = null;
     private AppInstallReceiver appInstallReceiver = null;
     private SwitchCompat switch_btn;
+
+    /** 三方动态申请权限工具类 */
+    private PermissionUtil permissionUtil = null;
+
+    @SuppressLint("CheckResult")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -86,14 +92,14 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
         switch_btn  = mToolbar.findViewById(R.id.switch_btn);
         switch_btn.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if(isChecked){
-                Toast.makeText(getApplicationContext() , "服务已开启...", Toast.LENGTH_LONG).show();
+                Toast.makeText(getApplicationContext() , "服务已开启...", Toast.LENGTH_SHORT).show();
                 if(!WebService.isStarted()){
                     WebService.start(getActivity());
                 }
                 new PopupMenuDialog(getActivity()).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
                 startRefresh();
             }else{
-                Toast.makeText(getApplicationContext() , "服务已关闭...", Toast.LENGTH_LONG).show();
+                Toast.makeText(getApplicationContext() , "服务已关闭...", Toast.LENGTH_SHORT).show();
                 WebService.stop(getActivity());
                 stopRefresh();
             }
@@ -104,8 +110,21 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
         RxBus.get().register(getActivity());
         initRecyclerView();
 
-        permissionUtil = new ApplyPermissionUtil(getActivity(), requestPermissionsListener);
-        permissionUtil.requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.READ_EXTERNAL_STORAGE}, TYPE_EXTERNAL_STORAGE);
+        permissionUtil = new PermissionUtil(getFragmentActivity());
+        permissionUtil.requestEach(Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                Manifest.permission.READ_EXTERNAL_STORAGE)
+                .subscribe( permission -> {
+
+                    if(permission.name.equals(Manifest.permission.READ_EXTERNAL_STORAGE) && permission.granted){
+                        //第一次安装时候 没有读写权限，导致没有读取本地的文件，则在获取权限成功后 需要重新读一遍
+                        RxBus.get().post(Constants.RxBusEventType.LOAD_FILE_LIST, 0);
+                    }
+
+                    if(!permission.granted && permission.shouldShowRequestPermissionRationale){
+                        Toast.makeText(getActivity() , "获取手机的文件的读取权限失败，请去设置中打开吧!" , Toast.LENGTH_SHORT).show();
+                    }
+
+                });
 
         registerAppInstallReceiver();
     }
@@ -143,52 +162,8 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
         registerReceiver(appInstallReceiver , filter);
     }
 
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        permissionUtil.listenerRequestPermissionsResult(requestCode, permissions, grantResults);
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-    }
-
-    ApplyPermissionUtil.RequestPermissionsListener requestPermissionsListener = new ApplyPermissionUtil.RequestPermissionsListener() {
-        @Override
-        public void getRequestPermissionResult(boolean b, int i) {
-            switch (i) {
-                case TYPE_EXTERNAL_STORAGE:
-                    if (b) {
-                        Toast.makeText(getActivity(), "获取文件读取权限成功...", Toast.LENGTH_LONG).show();
-                        //第一次安装时候 没有读写权限，导致没有读取本地的文件，则在获取权限成功后 需要重新读一遍
-                        RxBus.get().post(Constants.RxBusEventType.LOAD_FILE_LIST, 0);
-                    } else {
-                        Toast.makeText(getActivity(), "获取读写权限失败...", Toast.LENGTH_LONG).show();
-                        finish();
-                    }
-                    break;
-                case TYPE_REQUEST_INSTALL_PACKAGES:
-                    if (b) {
-                        Toast.makeText(getActivity(), "获取安装应用权限成功...", Toast.LENGTH_LONG).show();
-                        ApkUtil.installApk(getActivity(), installFile);
-                    }
-                    break;
-                default:
-                    break;
-            }
-        }
-    };
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        permissionUtil.listenerInstallPackagePermissionResult(requestCode , resultCode , data);
-
-    }
-
     @OnClick(R.id.fab)
     public void onClick(View view) {
-//        ObjectAnimator objectAnimator = ObjectAnimator.ofFloat(mFab, "translationY", 0, mFab.getHeight() * 2).setDuration(200L);
-//        objectAnimator.setInterpolator(new AccelerateInterpolator());
-//        objectAnimator.addListener(this);
-//        objectAnimator.start();
         new PopupMenuDialog(getActivity()).builder().setCancelable(false).setCanceledOnTouchOutside(true).show();
     }
 
@@ -196,24 +171,13 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
 
     @Subscribe(tags = {@Tag(Constants.RxBusEventType.POPUP_MENU_DIALOG_SHOW_DISMISS)})
     public void onPopupMenuDialogDismiss(Integer type) {
-        //弹窗消失不再停止服务
-//        if (type == Constants.MSG_DIALOG_DISMISS) {
-//            WebService.stop(this);
-//            ObjectAnimator objectAnimator = ObjectAnimator.ofFloat(mFab, "translationY", mFab.getHeight() * 2, 0).setDuration(200L);
-//            objectAnimator.setInterpolator(new AccelerateInterpolator());
-//            objectAnimator.start();
-//        }
+        //弹窗消失
     }
 
     @Override
     public void onAnimationStart(Animator animation) {
         Log.d("WebService", "WebService MainActivity start.");
-        //弹窗动画启动的时候不再启动服务-
-//        if (!WebService.isStarted()){
-//            WebService.start(this);
-//        }
-//        new PopupMenuDialog(this).builder().setCancelable(false)
-//                .setCanceledOnTouchOutside(false).show();
+        //弹窗动画启动
     }
 
     @Override
@@ -259,7 +223,6 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
             files.clear();
             files.addAll(fileList);
             filesAdapter.notifyDataSetChanged();
-//            mHeaderAndFooterWrapper.notifyDataSetChanged();
             if (files == null || files.size() <= 0) {
                 mNoDataView.setVisibility(View.VISIBLE);
                 recyclerView.setVisibility(View.GONE);
@@ -276,30 +239,69 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
     @Deprecated
     private void loadFileList() {
         //主动load本地的文件
-        Observable.create(new Observable.OnSubscribe<List<TransferFile>>() {
+//        Observable.create(new Observable.OnSubscribe<List<TransferFile>>() {
+//            @Override
+//            public void call(Subscriber<? super List<TransferFile>> subscriber) {
+//                List<TransferFile> tFiles = loadFileData();
+//                subscriber.onNext(tFiles);
+//                subscriber.onCompleted();
+//            }
+//        }).subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Observer<List<TransferFile>>() {
+//            @Override
+//            public void onCompleted() {
+//                filesAdapter.notifyDataSetChanged();
+//            }
+//
+//            @Override
+//            public void onError(Throwable e) {
+//                filesAdapter.notifyDataSetChanged();
+//            }
+//
+//            @Override
+//            public void onNext(List<TransferFile> filesList) {
+//                files.clear();
+//                files.addAll(filesList);
+//            }
+//        });
+        Observable.create(new ObservableOnSubscribe<List<TransferFile>>() {
             @Override
-            public void call(Subscriber<? super List<TransferFile>> subscriber) {
+            public void subscribe(ObservableEmitter<List<TransferFile>> emitter) throws Exception {
                 List<TransferFile> tFiles = loadFileData();
-                subscriber.onNext(tFiles);
-                subscriber.onCompleted();
+                emitter.onNext(tFiles);
+                emitter.onComplete();
             }
-        }).subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread()).subscribe(new Observer<List<TransferFile>>() {
-            @Override
-            public void onCompleted() {
-                filesAdapter.notifyDataSetChanged();
-            }
+        }).subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(new Observer<List<TransferFile>>() {
 
-            @Override
-            public void onError(Throwable e) {
-                filesAdapter.notifyDataSetChanged();
-            }
+                    private Disposable disposable = null;
 
-            @Override
-            public void onNext(List<TransferFile> filesList) {
-                files.clear();
-                files.addAll(filesList);
-            }
-        });
+                    @Override
+                    public void onSubscribe(Disposable d) {
+                        disposable = d;
+                    }
+
+                    @Override
+                    public void onNext(List<TransferFile> transferFiles) {
+                        files.clear();
+                        files.addAll(transferFiles);
+                    }
+
+                    @Override
+                    public void onError(Throwable e) {
+                        filesAdapter.notifyDataSetChanged();
+                    }
+
+                    @Override
+                    public void onComplete() {
+                        filesAdapter.notifyDataSetChanged();
+                        if (disposable != null) {
+                            //解除订阅，Observer观察者不再接收上游事件
+                            disposable.dispose();
+                        }
+                    }
+                });
+
     }
 
 
@@ -352,13 +354,20 @@ public class MainActivity extends CBaseActivity implements Animator.AnimatorList
                 });
             } else {
                 holder.getView(R.id.tv_install).setTag(file);
-
                 holder.setVisible(R.id.tv_install , true);
                 holder.setVisible(R.id.tv_uninstall , false);
                 holder.getView(R.id.tv_install).setOnClickListener(v -> {
                     TransferFile transferFile = (TransferFile) v.getTag();
                     installFile = transferFile;
-                    permissionUtil.requestPermissions(new String[]{Manifest.permission.REQUEST_INSTALL_PACKAGES}, TYPE_REQUEST_INSTALL_PACKAGES);
+                    permissionUtil.request(Manifest.permission.REQUEST_INSTALL_PACKAGES).subscribe( granted -> {
+                        if(granted){
+                            Toast.makeText(getActivity(), "获取安装应用权限成功...", Toast.LENGTH_LONG).show();
+                            ApkUtil.installApk(getActivity(), installFile);
+                        }else{
+                            Toast.makeText(getActivity(), "获取安装应用权限失败，这将导致无法通过WIFITransfer安装应用!\n快去设置中打开吧!", Toast.LENGTH_LONG).show();
+                        }
+                    });
+
                 });
             }
         }else if(file.getType() == FILE_TYPE_JPG || file.getType() == FILE_TYPE_PNG){

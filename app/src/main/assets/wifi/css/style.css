@@ -1,7 +1,7 @@
 html { margin: 0px; padding: 0px; overflow: visible; }
 body {  background-image: url('../images/bg1_01.jpg'); padding: 0px;margin: 0px; overflow: hidden; font-size: 14px; font-family:tahoma,  宋体, Arial, "MS Trebuchet", sans-serif;}/*background-image: url('../images/bg1_02.jpg');background-color: #376cab;*/
 #wrapper {  height: 768px; }
-#content { margin: 0px auto 0px auto; width:950px; height:768px; position: relative; }
+#content { margin: 0px auto 0px 30%; width:auto; height:768px; position: relative; }
 #left { margin: 0px 0px 0px 50px; }
 #logo { position: relative; height:417; }
 #logo .wifi { position:absolute;font-size:48px; line-height:48px; color:#ffffff; text-align:center; top:10px; }
@@ -51,16 +51,24 @@ body {  background-image: url('../images/bg1_01.jpg'); padding: 0px;margin: 0px;
 .button_lable { position: absolute; width:210px; height:90px; font-size:20px; line-height:80px; color:#ffffff; text-align:center;}
 .screenshot { height:30px; width:auto ; color:#FFFFFF}
 .screenshot_img {
-    width:400px ;
-    height:800px ;
-    float:right ;
-    align:bottom ;
-    border:solid 30px white;
-    border-radius: 30px;
-    margin-right: 250px;
+   width:340px ;
+   height:680px ;
+   display:inline-block;
+   margin-top:80px;
+   margin-right:3px;
 }
 
-#fileImg{
-    position: absolute;
-    left: 40%;
+.screenshot_bg{
+     width:385px ;
+     height:810px ;
+     float:right ;
+     align:bottom ;
+     margin-right: 250px;
+     position: absolute;
+     left: 35%;
+     background-image: url("../images/screenshot_bg.png");
+     background-repeat:no-repeat;
+     text-align:center;
 }
+
+.hint_h4 { font-size: 12px; color: #FFF; width:243px; height:30px; text-align: center; line-height:15px; position:absolute; top:500px;}

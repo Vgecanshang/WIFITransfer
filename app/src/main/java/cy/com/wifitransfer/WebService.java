@@ -156,7 +156,7 @@ public class WebService extends Service{
         server.get("/screenshotFiles", (AsyncHttpServerRequest request, AsyncHttpServerResponse response) -> {
             JSONArray array = new JSONArray();
             File dir = Constants.SCREENSHOT_DIR;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.O) {
                 dir = Constants.SCREENSHOT_DIR_26;
             }
             String[] fileNames = dir.list();

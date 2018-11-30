@@ -3,19 +3,22 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 apply plugin: 'kotlin-android-extensions'
-def releaseTime(){
-    return new Date().format("yyyyMMddhhmm" , TimeZone.getTimeZone("UTC"))
+
+def releaseTime() {
+    return new Date().format("yyyyMMddHHmm", TimeZone.getTimeZone("GMT+8"))
 }
+
 android {
     compileSdkVersion 28
     defaultConfig {
-        applicationId "cy.com.wifitransfer"
-        minSdkVersion 21
+        applicationId androidConfig.applicationId
+        minSdkVersion androidConfig.minSdkVersion
         targetSdkVersion 28
         versionCode 1
         versionName "1.1"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -30,29 +33,67 @@ android {
 
     }
     compileOptions {
-        sourceCompatibility = '1.8'
-        targetCompatibility = '1.8'
+        sourceCompatibility =  compileJava.JavaVersion
+        targetCompatibility =  compileJava.JavaVersion
     }
+
+    //签名工具 配置release和debug两种 , 需要在根目录的gradle.properties中配置签名的账号密码和alias
+    signingConfigs {
+        release {
+            try {
+                storeFile file("./keystore/cykeystore.jks")
+                storePassword project.property('storePassword')
+                keyAlias project.property('keyAlias')
+                keyPassword project.property('keyPassword')
+            } catch (ex) {
+                throw new InvalidUserDataException(ex.toString())
+            }
+        }
+
+        debug {
+            try {
+                storeFile file("./keystore/cykeystore.jks")
+                storePassword project.property('storePassword')
+                keyAlias project.property('keyAlias')
+                keyPassword project.property('keyPassword')
+            } catch (ex) {
+                throw new InvalidUserDataException(ex.toString())
+            }
+        }
+    }
+
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation"org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
 //    implementation 'com.android.support:appcompat-v7:28.0.0'
     implementation 'com.android.support.constraint:constraint-layout:1.1.3'
     testImplementation 'junit:junit:4.12'
 //    androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
-    implementation 'com.jakewharton:butterknife:8.4.0'
-    annotationProcessor 'com.jakewharton:butterknife-compiler:8.4.0'
 
-    implementation deps.recycler
-    implementation deps.supportDesign
-    implementation(deps.rxbus) {
+    implementation dependLib.recycler
+    implementation dependLib.supportDesign
+    implementation(dependLib.rxbus) {
         exclude group: 'com.jakewharton.timber', module: 'timber'
+//把Rxbus升到2.0.0后就不会加载rxbus依赖的低版本rxandroid和rxjava
+//        exclude group: 'io.reactivex', module: 'rxjava'
+//        exclude group: 'io.reactivex.rxandroid', module: 'rxandrid'
+//        exclude group: 'io.reactivex.rxjava2', module: 'rxandrid'
     }
-    implementation deps.androidasync
-    implementation deps.timber
-
-    implementation 'com.github.Vgecanshang:CyongLibrary:v1.0.9'
+    implementation(dependLib.androidasync) {
+        exclude group: 'io.reactivex', module: 'rxjava'
+        exclude group: 'io.reactivex.rxandroid', module: 'rxandrid'
+        exclude group: 'io.reactivex.rxjava2', module: 'rxandrid'
+    }
+    implementation dependLib.timber
+    implementation dependLib.rxandroid
+    implementation (dependLib.vgecanshang){
+        exclude group: 'io.reactivex', module: 'rxjava'
+        exclude group: 'io.reactivex.rxandroid', module: 'rxandrid'
+        exclude group: 'io.reactivex.rxjava2', module: 'rxandrid'
+    }
+    implementation dependLib.butterknife
+    annotationProcessor dependLib.butterknifeCompiler
 }

@@ -13,7 +13,7 @@ public class Constants {
     public static final String DIR_FILESHARE_IN_SDCARD = "WifiTransfer";
     /** 26(8.0系统)以上的截图路径 */
     public static final String DIR_SCREENSHOT_IN_SDCARD_26 = "/DCIM/Screenshots";
-    /** 26以下(7.0、5.0等)的截图路径 */
+    /** 26及以下(7.0、5.0等)的截图路径 */
     public static final String DIR_SCREENSHOT_IN_SDCARD = "/Pictures/Screenshots";
     public static final int MSG_DIALOG_DISMISS = 0;
     public static final File DIR = new File(Environment.getExternalStorageDirectory() + File.separator + Constants.DIR_FILESHARE_IN_SDCARD);
